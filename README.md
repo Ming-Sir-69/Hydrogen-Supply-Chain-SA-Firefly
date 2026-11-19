@@ -22,15 +22,15 @@
   <b>简体中文</b> · <a href="README.en.md">English</a>
 </p>
 
-# 氢能供应链成本模型：模拟退火候选搜索
+# 氢能供应链成本模型：模拟退火萤火虫搜索
 
-本项目保存四种氢能生产与运输成本模型的 Python 和 MATLAB 实验代码。四种制氢方式与三种运输方式组成 12 个初始候选，搜索过程随机改选方式，并按模拟退火接受规则更新候选。仓库另附按模型分组的 Excel 实验归档；当前代码不包含萤火虫算法的亮度与距离吸引更新，也不提供已独立验证的政策结论。
+本项目用离散模拟退火萤火虫算法搜索氢能生产与运输的低成本组合。四种制氢方式与三种运输方式组成 12 种候选，在四种成本与补贴模型中使用同一个搜索内核。仓库另附历史 Excel 实验归档；归档未由混合算法重新生成，不能用于推断政策效果。
 
 ## 主要功能
 
 - **四种目标函数**：无补贴成本、直接资金补贴、比例成本分担、环境成本与绿色补贴。
 - **离散候选搜索**：在 Green、SMR、ATR、CCS 与 Pipeline、Truck、LiquefiedTruck 之间改选，主搜索固定生产量和运输量。
-- **温度与停止控制**：根据目标接受率估计初始温度，最多迭代 1000 次；最佳适应度在 200 次窗口内变化小于 `1e-4` 时停止。
+- **温度与停止控制**：按典型上坡代价和目标接受率估计初始温度，逐轮降温，最多 1000 轮；连续 200 轮没有改进时提前停止。
 - **两类运行入口**：Python 入口直接打印搜索过程；MATLAB 入口通过 `py.*` 调用对应目录的 Python 模块<sup>[[2]](#参考文献)</sup>。
 - **历史实验归档**：压缩包含 209 个 XLSX 文件，按 model0 至 model3 分组；归档内容尚未由当前代码独立重建核对。
 
@@ -43,22 +43,22 @@
 
 ## 快速开始
 
-准备 Python 3 和 NumPy<sup>[[1]](#参考文献)</sup>。仓库没有依赖锁文件，也没有测试或持续集成配置。在仓库根目录运行四个 Python 入口：
+准备 Python 3 和 NumPy<sup>[[1]](#参考文献)</sup>。仓库没有依赖锁文件，也没有自动化测试套件或持续集成配置。在仓库根目录运行四个 Python 入口：
 
 ```sh
 python3 -c 'import numpy'
 for model in 0 1 2 3; do
-  (cd "model${model}" && python3 -B "simulated_annealing_firefly_model${model}.py")
+  (cd "model${model}" && python3 -B "simulated_annealing_firefly_model${model}.py" --seed 7)
 done
 ```
 
-四个入口已在 Python 3.14.7、NumPy 2.5.0 环境中完成运行并打印结果。代码未固定随机种子，候选方案、适应度与停止前的输出可随运行改变；归档中的数值不能视为每次运行的固定输出。
+四个 Python 入口均已实跑。可用 `--seed` 固定随机序列；不传时每次运行的搜索轨迹可能不同。
 
 只运行一个模型时，进入对应目录后执行，例如：
 
 ```sh
 cd model0
-python3 -B simulated_annealing_firefly_model0.py
+python3 -B simulated_annealing_firefly_model0.py --seed 7
 ```
 
 ## 用法
@@ -77,26 +77,23 @@ python3 -B simulated_annealing_firefly_model0.py
 
 ## 设计与原理
 
-1. 初始生成 4 × 3 = 12 个候选，每个候选包含一种制氢方式、一种运输方式及固定数量。
-2. 每轮为每个候选随机改选制氢与运输方式，数量保持不变。
-3. 更低适应度候选被接受；更高适应度候选按 `exp((old − new) / T)` 的概率接受。
-4. 初始温度从 5000 起调整，目标接受率为 0.66、容差为 0.01；该估计步骤会临时随机改变数量，与主搜索的固定数量规则不同。
-5. 主搜索最多执行 1000 轮，每 4 轮检查一次最近 200 个最佳适应度值。
+1. 每个候选由制氢方式、运输方式及固定数量组成。成本越低，视为越亮。
+2. 每个候选从上一轮的同数量种群中随机选一只更亮的萤火虫；两个方式字段中不同的比例记为距离 `d`，按 `β₀ exp(−γd²)` 的概率向其复制不同字段。没有更亮同伴时跳过吸引。
+3. 两个方式字段分别以一定概率变异；生产量和运输量不变。
+4. 成本不升的提案直接接受；成本增加 `Δ` 时，以 `exp(−Δ/T)` 的概率接受。初温用单字段变更的正代价差中位数估算，然后每轮乘以小于 1 的因子。独立保存找到的最佳方案，不随种群变化。
 
-该流程包含模拟退火的随机候选与 Metropolis 接受形式<sup>[[1]](#相关研究)</sup>。标准萤火虫算法使用的亮度吸引、距离衰减与位置更新没有出现在当前实现中<sup>[[2]](#相关研究)</sup>，因此仓库名不能作为完整混合算法实现的证据。
+萤火虫吸引与模拟退火的出处见参考文献<sup>[[3]](#参考文献)[[4]](#参考文献)</sup>。这里是对类别变量的离散改写，不是连续位置更新公式的原样复现。
 
 ## 局限
 
-- 默认参数使 Python 主入口的温度乘数为 **1.2825（model0、model1）或 1.34325（model2、model3）**，均大于 1；温度会上升，与“冷却”命名不符。
-- 返回的 `best_solution` 与种群中的字典共享引用，后续更新可能改变已保存方案；打印方案不一定对应记录的最佳适应度。
-- 未固定随机种子，未提供重复实验、测试、基线比较或参数敏感性分析，不能据此判断算法性能或补贴政策效果。
+- 默认初始种群已覆盖 12 种组合，穷举即可得到精确最小值。四个模型从排除所有最优方案的初始种群出发，各用 10 个随机种子均找回穷举最优；这不是与穷举的性能对比，也不保证更大问题的收敛表现。
 - model3 的运输环境成本只乘运输量，未乘距离，与参数注释中的“元/千克/公里”不一致。
 - 成本、环境成本与补贴参数没有来源说明；Excel 归档尚未独立重建，不能当作已验证研究结果。
-- MATLAB 脚本包含特定机器路径和输出目录假设，当前环境未验证其兼容性。
+- MATLAB 脚本包含特定机器路径和输出目录假设，当前环境未验证其兼容性。脚本在调用 Python 后的旧汇报循环只是重复最终适应度，不是真实搜索轨迹。
 
 ## 开发
 
-本仓库以源码和历史实验材料为主，没有发布包、版本标签、贡献指南或持续集成。`__pycache__/` 中的文件是已提交的运行缓存，不是独立源码。修改代码时需要另行补充可重复实验、参数来源与结果核对；本轮门面草稿不改变这些行为。
+四个模型共用 `annealing_firefly.py`，保留各自的成本函数和 Python/MATLAB 入口。本仓库没有发布包或持续集成；已提交的 `__pycache__/` 是历史缓存，不是源码。
 
 [结构说明](文件夹结构.txt)列出各目录用途，[实验归档](实验数据.zip)保留历史 XLSX 文件。文档授权范围见[个人文档许可](readme-assets/PERSONAL-DOCUMENTATION-LICENSE.md)。
 
@@ -111,17 +108,14 @@ python3 -B simulated_annealing_firefly_model0.py
 1. Harris, C. R., Millman, K. J., van der Walt, S. J., et al. (2020). Array programming with NumPy. *Nature*, 585(7825), 357–362. <https://doi.org/10.1038/s41586-020-2649-2>
 2. MathWorks. *pyenv — Change default environment of Python interpreter*, R2026b. <https://www.mathworks.com/help/matlab/ref/pyenv.html>
 
-## 相关研究
-
-以下文献用于对照算法概念，不表示当前源码依据这些文献实现。
-
-1. Kirkpatrick, S., Gelatt, C. D., & Vecchi, M. P. (1983). Optimization by Simulated Annealing. *Science*, 220(4598), 671–680. <https://doi.org/10.1126/science.220.4598.671>。对应随机候选与按温度接受较差解的机制。
-2. Yang, X.-S. (2009). Firefly Algorithms for Multimodal Optimization. *Stochastic Algorithms: Foundations and Applications*, 169–178. Springer. <https://doi.org/10.1007/978-3-642-04944-6_14>。对应亮度吸引与距离衰减机制；当前代码未实现这些更新。
+3. Yang, X.-S. (2009). Firefly Algorithms for Multimodal Optimization. *Stochastic Algorithms: Foundations and Applications*, 169–178. Springer. <https://doi.org/10.1007/978-3-642-04944-6_14>
+4. Kirkpatrick, S., Gelatt, C. D., & Vecchi, M. P. (1983). Optimization by Simulated Annealing. *Science*, 220(4598), 671–680. <https://doi.org/10.1126/science.220.4598.671>
 
 ## 仓库结构
 
 | 位置 | 内容 |
 |---|---|
+| `annealing_firefly.py` | 共享离散搜索内核 |
 | `model0/` | 无补贴的生产与运输成本模型及运行入口 |
 | `model1/` | 直接资金补贴模型及运行入口 |
 | `model2/` | 比例成本分担模型及运行入口 |

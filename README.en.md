@@ -22,15 +22,15 @@
   <a href="README.md">简体中文</a> · <b>English</b>
 </p>
 
-# Hydrogen Supply-Chain Cost Models: Simulated-Annealing Candidate Search
+# Hydrogen Supply-Chain Cost Models: Simulated-Annealing Firefly Search
 
-This project contains Python and MATLAB experiments for four hydrogen production and transport cost models. Four production methods and three transport methods form 12 initial candidates. The search randomly changes the selected methods and updates candidates with a simulated-annealing acceptance rule. An Excel experiment archive is grouped by model. The current code does not implement the firefly algorithm's brightness and distance-based attraction, and it provides no independently verified policy findings.
+This project uses a discrete simulated-annealing firefly algorithm to search for low-cost combinations of hydrogen production and transport. Four production methods and three transport methods form 12 candidates. Four cost and subsidy models use the same search engine. The historical Excel archive was not regenerated with the hybrid algorithm and does not establish policy effects.
 
 ## Features
 
 - **Four objective functions**: cost without subsidy, direct financial subsidy, proportional cost sharing, and environmental cost with a green subsidy.
 - **Discrete candidate search**: choices among Green, SMR, ATR and CCS, and among Pipeline, Truck and LiquefiedTruck; production and transport quantities remain fixed during the main search.
-- **Temperature and stopping controls**: initial temperature estimated from a target acceptance rate, at most 1000 iterations, and stopping when the best fitness changes by less than `1e-4` over a 200-value window.
+- **Temperature and stopping controls**: initial temperature from a typical uphill cost and a target acceptance probability, followed by cooling for at most 1000 iterations. The search stops early after 200 iterations without improvement.
 - **Two entry types**: Python entries print the search directly; MATLAB entries call Python modules in the corresponding directory through `py.*`<sup>[[2]](#references)</sup>.
 - **Historical experiment archive**: 209 XLSX files grouped from model0 through model3; their contents have not been independently rebuilt and checked with the current code.
 
@@ -43,22 +43,22 @@ This project contains Python and MATLAB experiments for four hydrogen production
 
 ## Quick start
 
-Install Python 3 and NumPy<sup>[[1]](#references)</sup>. The repository has no dependency lockfile, tests or continuous-integration configuration. Run all four Python entries from the repository root:
+Install Python 3 and NumPy<sup>[[1]](#references)</sup>. The repository has no dependency lockfile, automated test suite or continuous-integration configuration. Run all four Python entries from the repository root:
 
 ```sh
 python3 -c 'import numpy'
 for model in 0 1 2 3; do
-  (cd "model${model}" && python3 -B "simulated_annealing_firefly_model${model}.py")
+  (cd "model${model}" && python3 -B "simulated_annealing_firefly_model${model}.py" --seed 7)
 done
 ```
 
-All four entries completed and printed results with Python 3.14.7 and NumPy 2.5.0. The code does not set a random seed, so candidate solutions, fitness values and output before stopping can differ between runs. Archived values are not fixed outputs of every run.
+All four Python entries were exercised. Use `--seed` for a repeatable random sequence. Without it, the search trajectory can vary between runs.
 
 To run one model, enter its directory and invoke its entry, for example:
 
 ```sh
 cd model0
-python3 -B simulated_annealing_firefly_model0.py
+python3 -B simulated_annealing_firefly_model0.py --seed 7
 ```
 
 ## Usage
@@ -77,26 +77,23 @@ The modified scripts also write Excel files, generate statistical plots and assu
 
 ## Design
 
-1. Generate 4 × 3 = 12 initial candidates, each with one production method, one transport method and fixed quantities.
-2. For every candidate in each iteration, randomly select new production and transport methods while keeping quantities unchanged.
-3. Accept a lower-fitness candidate. Accept a higher-fitness candidate with probability `exp((old − new) / T)`.
-4. Adjust initial temperature from 5000 toward a target acceptance rate of 0.66 with tolerance 0.01. This estimation step temporarily randomizes quantities, unlike the fixed quantities in the main search.
-5. Run at most 1000 main-search iterations and inspect the latest 200 best-fitness values every four iterations.
+1. Each candidate contains production and transport methods with fixed quantities. Lower cost means a brighter firefly.
+2. Each candidate chooses a random brighter peer with the same quantities from the previous population. Distance `d` is the fraction of differing method fields. Each differing field can copy the peer with probability `β₀ exp(−γd²)`. Without a brighter peer, attraction is skipped.
+3. Each method field may mutate independently; production and transport quantities stay fixed.
+4. A proposal that does not raise cost is accepted. An increase `Δ` is accepted with probability `exp(−Δ/T)`. Initial temperature uses the median positive cost increase from single-field changes; each iteration multiplies temperature by a factor below 1. The best solution is stored separately from the population.
 
-This procedure contains the random proposals and Metropolis acceptance form of simulated annealing<sup>[[1]](#related-work)</sup>. The brightness attraction, distance decay and position updates of the standard firefly algorithm are absent from the current implementation<sup>[[2]](#related-work)</sup>. The repository name is therefore not evidence of a complete hybrid-algorithm implementation.
+See the references for firefly attraction and simulated annealing<sup>[[3]](#references)[[4]](#references)</sup>. This implementation adapts the ideas to categorical choices; it does not reproduce continuous position updates verbatim.
 
 ## Limitations
 
-- With the default parameters, the Python entries multiply temperature by **1.2825 (model0 and model1) or 1.34325 (model2 and model3)**. Both exceed 1, so temperature increases despite the cooling terminology.
-- The returned `best_solution` shares a dictionary reference with the population. Later updates can change the saved solution, so the printed solution may not correspond to the recorded best fitness.
-- No random seed, repeated experiments, tests, baseline comparison or parameter sensitivity analysis is provided. The code does not establish algorithm performance or subsidy-policy effects.
+- The default population already contains all 12 combinations, so enumeration gives the exact minimum. For each of the four models, 10 random seeds recovered the enumerated minimum from a population with all optimal candidates removed. This is not a performance comparison with enumeration or a convergence claim for larger problems.
 - In model3, transport environmental cost is multiplied by transport quantity without distance, inconsistent with the parameter comment's unit of CNY/kg/km.
 - Cost, environmental-cost and subsidy parameters have no documented sources. The Excel archive has not been independently rebuilt and is not a verified research result.
-- MATLAB scripts contain machine-specific paths and output-directory assumptions. Their compatibility was not verified in the current environment.
+- MATLAB scripts contain machine-specific paths and output-directory assumptions. Their compatibility was not verified in this environment. The legacy reporting loops repeat the final fitness after Python returns; they do not show the actual search trajectory.
 
 ## Development
 
-This repository contains source and historical experimental material, with no distribution package, version tags, contribution guide or continuous integration. Files under `__pycache__/` are committed runtime caches, not separate source. Code changes require additional reproducible experiments, parameter provenance and result checks; this documentation draft leaves those behaviors unchanged.
+The four models share `annealing_firefly.py` and retain their own cost functions and Python/MATLAB entry points. The repository has no distribution package or continuous integration. The committed `__pycache__/` files are historical caches, not source.
 
 [Structure notes](文件夹结构.txt) describe the directories, and the [experiment archive](实验数据.zip) retains historical XLSX files. See the [personal documentation license](readme-assets/PERSONAL-DOCUMENTATION-LICENSE.md) for the documentation licensing scope.
 
@@ -111,17 +108,14 @@ This repository contains source and historical experimental material, with no di
 1. Harris, C. R., Millman, K. J., van der Walt, S. J., et al. (2020). Array programming with NumPy. *Nature*, 585(7825), 357–362. <https://doi.org/10.1038/s41586-020-2649-2>
 2. MathWorks. *pyenv — Change default environment of Python interpreter*, R2026b. <https://www.mathworks.com/help/matlab/ref/pyenv.html>
 
-## Related work
-
-These publications provide algorithmic comparisons. Their inclusion does not imply that the current source was implemented from them.
-
-1. Kirkpatrick, S., Gelatt, C. D., & Vecchi, M. P. (1983). Optimization by Simulated Annealing. *Science*, 220(4598), 671–680. <https://doi.org/10.1126/science.220.4598.671>. Relates to random candidates and temperature-dependent acceptance of worse solutions.
-2. Yang, X.-S. (2009). Firefly Algorithms for Multimodal Optimization. *Stochastic Algorithms: Foundations and Applications*, 169–178. Springer. <https://doi.org/10.1007/978-3-642-04944-6_14>. Describes brightness attraction and distance decay; the current code does not implement these updates.
+3. Yang, X.-S. (2009). Firefly Algorithms for Multimodal Optimization. *Stochastic Algorithms: Foundations and Applications*, 169–178. Springer. <https://doi.org/10.1007/978-3-642-04944-6_14>
+4. Kirkpatrick, S., Gelatt, C. D., & Vecchi, M. P. (1983). Optimization by Simulated Annealing. *Science*, 220(4598), 671–680. <https://doi.org/10.1126/science.220.4598.671>
 
 ## Repository structure
 
 | Path | Contents |
 |---|---|
+| `annealing_firefly.py` | Shared discrete search engine |
 | `model0/` | Production and transport cost model without subsidy, with entries |
 | `model1/` | Direct financial subsidy model and entries |
 | `model2/` | Proportional cost-sharing model and entries |
